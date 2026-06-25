@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Invito al mio compleanno</title>
+  <style>
+    :root{
+      --accent:#e53e3e;
+      --bg:#fff9f8;
+      --text:#222;
+    }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:var(--text)}
+    main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;text-align:center}
+    h1 i{font-style:italic}
+    p{max-width:40rem;margin:1rem 0}
+    .btn{
+      background:var(--accent);color:white;border:0;padding:.8rem 1.2rem;font-size:1.05rem;border-radius:10px;cursor:pointer;
+      box-shadow:0 6px 18px rgba(0,0,0,.12);transition:transform .12s ease,box-shadow .12s ease;
+    }
+    .btn:active{transform:translateY(1px)}
+    /* Respect prefers-reduced-motion */
+    @media (prefers-reduced-motion:reduce){
+      .confetti{display:none}
+    }
+    .surprise{
+      margin-top:1rem;font-weight:700;font-size:1.05rem;opacity:0;transform:translateY(-6px);transition:opacity .35s,transform .35s;
+    }
+    .surprise.show{opacity:1;transform:translateY(0)}
+    /* small canvas cover for confetti */
+    canvas.confetti{
+      position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:9999;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1><i>Ciao amici.</i></h1>
+    <p>Volevo rendere l'invito per il mio compleanno più strano possibile quindi &gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;</p>
+
+    <!-- Accessible interactive control instead of deprecated <font> -->
+    <button id="surpriseBtn" class="btn" aria-live="polite" aria-pressed="false" aria-label="Clicca per la sorpresa">
+      Cliccami
+    </button>
+
+    <div id="message" class="surprise" role="status" aria-hidden="true">...</div>
+  </main>
+
+  <canvas class="confetti" id="confettiCanvas" aria-hidden="true"></canvas>
+
+  <script>
+    // Minimal confetti using canvas and emoji particles.
+    const btn = document.getElementById('surpriseBtn');
+    const msg = document.getElementById('message');
+    const canvas = document.getElementById('confettiCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = innerWidth * devicePixelRatio;
+      canvas.height = innerHeight * devicePixelRatio;
+      canvas.style.width = innerWidth + 'px';
+      canvas.style.height = innerHeight + 'px';
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    let particles = [];
+    function spawnConfetti(x, y){
+      const colors = ['#ff6b6b','#ffd166','#6bcB77','#6ec1ff','#c6a0ff'];
+      for(let i=0;i<80;i++){
+        particles.push({
+          x, y,
+          vx: (Math.random()-0.5)*8,
+          vy: (Math.random()*-6)-2,
+          size: Math.random()*10+6,
+          color: colors[Math.floor(Math.random()*colors.length)],
+          rot: Math.random()*360,
+          life: Math.random()*80+40
+        });
+      }
+    }
+
+    function tick(){
+      ctx.clearRect(0,0,innerWidth,innerHeight);
+      for(let i=particles.length-1;i>=0;i--){
+        const p = particles[i];
+        p.vy += 0.18; // gravity
+        p.x += p.vx; p.y += p.vy;
+        p.rot += p.vx*2;
+        p.life--;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot * Math.PI/180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.6);
+        ctx.restore();
+        if(p.y > innerHeight + 50 || p.life <= 0) particles.splice(i,1);
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // Respect reduced motion preference
+    const reduced = matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+    btn.addEventListener('click', () => {
+      // toggle aria-pressed
+      const pressed = btn.getAttribute('aria-pressed') === 'true';
+      btn.setAttribute('aria-pressed', String(!pressed));
+
+      // show a fun message
+      msg.textContent = 'Sorpresa! 🎉 Ti aspetto alla festa — porta la tua stranezza!';
+      msg.setAttribute('aria-hidden','false');
+      msg.classList.add('show');
+
+      if(!reduced){
+        // spawn confetti at button position
+        const rect = btn.getBoundingClientRect();
+        spawnConfetti(rect.left + rect.width/2, rect.top + rect.height/2);
+      }
+
+      // hide message after a while
+      setTimeout(()=>{ msg.classList.remove('show'); msg.setAttribute('aria-hidden','true'); }, 6000);
+    });
+  </script>
+</body>
+</html>
