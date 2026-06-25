@@ -15,20 +15,21 @@
     h1 i{font-style:italic}
     p{max-width:40rem;margin:1rem 0}
     .btn{
-      background:var(--accent);color:white;border:0;padding:.8rem 1.2rem;font-size:1.05rem;border-radius:10px;cursor:pointer;
+      background:var(--accent);color:white;border:0;padding:.9rem 1.4rem;font-size:1.05rem;border-radius:10px;cursor:pointer;
       box-shadow:0 6px 18px rgba(0,0,0,.12);transition:transform .12s ease,box-shadow .12s ease;
     }
     .btn:active{transform:translateY(1px)}
 
-    /* popup window styles */
+    /* popup window styles - responsive */
     .popup{
       position:fixed;background:#fff;border:3px solid #222;box-shadow:0 10px 30px rgba(0,0,0,.4);padding:12px;font-family:Segoe UI, Tahoma, Arial;z-index:1000;display:flex;flex-direction:column;gap:8px;
+      width: min(90vw, 440px); max-height: 80vh; overflow:auto; box-sizing:border-box;
     }
     .popup .title{
-      font-weight:700;background:#c0392b;color:#fff;padding:6px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:1rem
+      font-weight:700;background:#c0392b;color:#fff;padding:8px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:1rem
     }
-    .popup .body{background:#fff;padding:8px;border-radius:4px;color:#111}
-    .close-btn{background:#fff;border:1px solid #888;padding:2px 6px;border-radius:3px;cursor:pointer}
+    .popup .body{background:#fff;padding:10px;border-radius:4px;color:#111}
+    .close-btn{background:#fff;border:1px solid #888;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:1rem}
 
     /* final modal */
     .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:2000}
@@ -43,7 +44,7 @@
       .popup{transition:none}
     }
 
-    /* small canvas cover for confetti (kept from previous) */
+    /* small canvas cover for confetti */
     canvas.confetti{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:9999}
   </style>
 </head>
@@ -62,7 +63,12 @@
   <canvas class="confetti" id="confettiCanvas" aria-hidden="true"></canvas>
 
   <script>
-    // Minimal confetti using canvas and particles (kept for fun)
+    // Mobile-friendly improvements:
+    // - responsive popups
+    // - larger touch targets
+    // - single AudioContext reused (created on first user gesture)
+    // - particle limit on small screens
+
     const btn = document.getElementById('surpriseBtn');
     const msg = document.getElementById('message');
     const canvas = document.getElementById('confettiCanvas');
@@ -73,16 +79,18 @@
       canvas.height = innerHeight * devicePixelRatio;
       canvas.style.width = innerWidth + 'px';
       canvas.style.height = innerHeight + 'px';
-      ctx.scale(devicePixelRatio, devicePixelRatio);
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
     }
     addEventListener('resize', resize);
     resize();
 
     let particles = [];
     function spawnConfetti(x, y){
+      const max = innerWidth < 600 ? 30 : 80; // limit on small screens
       const colors = ['#ff6b6b','#ffd166','#6bcB77','#6ec1ff','#c6a0ff'];
-      for(let i=0;i<80;i++){
-        particles.push({x, y, vx: (Math.random()-0.5)*8, vy: (Math.random()*-6)-2, size: Math.random()*10+6, color: colors[Math.floor(Math.random()*colors.length)], rot: Math.random()*360, life: Math.random()*80+40});
+      const count = Math.min(max, 40);
+      for(let i=0;i<count;i++){
+        particles.push({x, y, vx: (Math.random()-0.5)*6, vy: (Math.random()*-5)-1, size: Math.random()*8+6, color: colors[Math.floor(Math.random()*colors.length)], rot: Math.random()*360, life: Math.random()*80+40});
       }
     }
     function tick(){
@@ -99,40 +107,70 @@
 
     const reduced = matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-    // --- New behavior: spawn 4 error windows in sequence ---
-    let closedCount = 0;
-    let finalShown = false;
-
-    function playXPSound(){
-      // Approximate XP error sound using WebAudio (two tones + decay)
-      try{
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const now = ctx.currentTime;
-        const o1 = ctx.createOscillator();
-        const o2 = ctx.createOscillator();
-        const g = ctx.createGain();
-        o1.type = 'sine'; o2.type = 'sine';
-        o1.frequency.setValueAtTime(880, now); // A5
-        o2.frequency.setValueAtTime(1046.5, now); // C6
-        o1.connect(g); o2.connect(g); g.connect(ctx.destination);
-        g.gain.setValueAtTime(0, now);
-        g.gain.linearRampToValueAtTime(0.25, now + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-        o1.start(now); o2.start(now + 0.02);
-        o1.stop(now + 1.3); o2.stop(now + 1.3);
-      }catch(e){
-        // ignore if audio not allowed
-        console.warn('Audio not available', e);
+    // single AudioContext reused for mobile compatibility
+    let audioCtx = null;
+    function ensureAudio(){
+      if(!audioCtx){
+        try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ audioCtx = null; }
       }
+      if(audioCtx && audioCtx.state === 'suspended'){
+        // resume on user gesture
+        audioCtx.resume().catch(()=>{});
+      }
+      return audioCtx;
     }
 
+    function playXPSound(){
+      const ctxA = ensureAudio();
+      if(!ctxA) return;
+      const now = ctxA.currentTime;
+      const o1 = ctxA.createOscillator();
+      const o2 = ctxA.createOscillator();
+      const g = ctxA.createGain();
+      o1.type = 'sine'; o2.type = 'sine';
+      o1.frequency.setValueAtTime(880, now);
+      o2.frequency.setValueAtTime(1046.5, now);
+      o1.connect(g); o2.connect(g); g.connect(ctxA.destination);
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(0.22, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+      o1.start(now); o2.start(now + 0.02);
+      o1.stop(now + 1.1); o2.stop(now + 1.1);
+    }
+
+    function playShortBeep(freq){
+      const ctxA = ensureAudio();
+      if(!ctxA) return;
+      const now = ctxA.currentTime;
+      const o = ctxA.createOscillator();
+      const g = ctxA.createGain();
+      o.type = 'square'; o.frequency.value = freq;
+      o.connect(g); g.connect(ctxA.destination);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      o.start(now); o.stop(now + 0.25);
+    }
+
+    // create popup with responsive size and clamped position
     function createPopup(size, left, top, zIndex){
       const win = document.createElement('div');
       win.className = 'popup';
-      win.style.width = size[0] + 'px';
-      win.style.height = size[1] + 'px';
-      win.style.left = left + 'px';
-      win.style.top = top + 'px';
+      // let CSS handle width; but keep optional min size via style
+      if(window.innerWidth > 480){
+        win.style.width = Math.min(size[0], 440) + 'px';
+        win.style.height = size[1] + 'px';
+      } else {
+        win.style.width = '90vw';
+        win.style.height = 'auto';
+      }
+      // clamp positions so they stay on screen
+      const w = parseInt(win.style.width,10) || Math.min(size[0], 440);
+      const h = parseInt(win.style.height,10) || size[1];
+      const clampedLeft = Math.min(Math.max(8, left), Math.max(8, innerWidth - w - 8));
+      const clampedTop = Math.min(Math.max(8, top), Math.max(8, innerHeight - h - 8));
+      win.style.left = clampedLeft + 'px';
+      win.style.top = clampedTop + 'px';
       win.style.zIndex = zIndex;
 
       const title = document.createElement('div');
@@ -141,15 +179,12 @@
 
       const close = document.createElement('button');
       close.className = 'close-btn';
+      close.setAttribute('aria-label','Chiudi finestra');
       close.textContent = 'Chiudi';
       close.addEventListener('click', ()=>{
         win.remove();
-        closedCount++;
-        // when at least one window closed, show final message (once)
-        if(!finalShown){
-          finalShown = true;
-          showFinalModal();
-        }
+        // show final message once when user closes at least one
+        if(!finalShown){ finalShown = true; showFinalModal(); }
       });
       title.appendChild(close);
 
@@ -161,14 +196,13 @@
       win.appendChild(body);
       document.body.appendChild(win);
 
-      // small entrance animation
-      win.animate([{opacity:0, transform:'scale(0.85)'},{opacity:1, transform:'scale(1)'}],{duration:220,fill:'forwards',easing:'ease-out'});
+      // entrance animation (prefer transform for performance)
+      win.animate([{opacity:0, transform:'translateY(-6px) scale(.98)'},{opacity:1, transform:'translateY(0) scale(1)'}],{duration:220,fill:'forwards',easing:'cubic-bezier(.2,.8,.2,1)'});
 
       return win;
     }
 
     function showFinalModal(){
-      // play sound too
       playXPSound();
 
       const overlay = document.createElement('div');
@@ -188,7 +222,7 @@
       rules.className = 'rules';
 
       const r1 = document.createElement('li');
-      r1.textContent = '1) Chi pacca è ';
+      r1.textContent = '1) Chi pacca è Gaetano';
       const r2 = document.createElement('li');
       r2.textContent = '2) No WEED.';
 
@@ -205,11 +239,16 @@
       document.body.appendChild(overlay);
     }
 
-    btn.addEventListener('click', () => {
+    let finalShown = false;
+
+    btn.addEventListener('click', (e) => {
+      // ensure audio context created/resumed on user gesture
+      ensureAudio();
+
       // prevent repeated clicks
       btn.disabled = true;
 
-      // spawn confetti for fun if not reduced motion
+      // spawn confetti for fun if not reduced motion and not too small
       if(!reduced){
         const rect = btn.getBoundingClientRect();
         spawnConfetti(rect.left + rect.width/2, rect.top + rect.height/2);
@@ -220,37 +259,21 @@
 
       // sizes for four windows: increasing
       const sizes = [[200,110],[260,140],[340,180],[440,220]];
-      // positions (centered with offsets)
       const cx = innerWidth/2, cy = innerHeight/2;
 
       sizes.forEach((s, i) => {
         setTimeout(()=>{
-          // random slight offset
-          const left = Math.max(10, cx - s[0]/2 + (i-1.5)*30);
-          const top = Math.max(10, cy - s[1]/2 + (i-1.5)*20);
+          const computedWidth = window.innerWidth > 480 ? Math.min(s[0], 440) : Math.round(window.innerWidth * 0.9);
+          const left = Math.max(8, cx - computedWidth/2 + (i-1.5)*24);
+          const top = Math.max(8, cy - s[1]/2 + (i-1.5)*16);
           createPopup(s, left, top, 1000 + i);
-          // play a short beep for each popup (staggered)
-          if(!reduced) playShortBeep(400 + i*80);
+          if(!reduced) playShortBeep(420 + i*60);
         }, i * 420);
       });
 
-      // re-enable button after a bit if you want
+      // re-enable button after a bit
       setTimeout(()=>{ btn.disabled = false; }, 4000);
     });
-
-    function playShortBeep(freq){
-      try{
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = actx.createOscillator();
-        const g = actx.createGain();
-        o.type = 'square'; o.frequency.value = freq;
-        o.connect(g); g.connect(actx.destination);
-        g.gain.setValueAtTime(0.0001, actx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.15, actx.currentTime + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + 0.25);
-        o.start(); o.stop(actx.currentTime + 0.3);
-      }catch(e){ }
-    }
 
   </script>
 </body>
